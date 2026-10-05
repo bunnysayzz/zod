@@ -3331,8 +3331,8 @@ export const $ZodRecord: core.$constructor<$ZodRecord> = /*@__PURE__*/ core.$con
       let unrecognized!: string[];
       // Reflect.ownKeys for Symbol-key support; filter non-enumerable to match z.object()
       for (const key of Reflect.ownKeys(input)) {
-        if (key === "__proto__") continue;
         if (!Object.prototype.propertyIsEnumerable.call(input, key)) continue;
+        // run the key schema on __proto__ too: a rejecting key schema reports invalid_key, writes stay guarded below
         let keyResult = def.keyType._zod.run({ value: key, issues: [] }, ctx);
         if (keyResult instanceof Promise) {
           throw new Error("Async schemas not supported in object keys currently");
@@ -3352,8 +3352,8 @@ export const $ZodRecord: core.$constructor<$ZodRecord> = /*@__PURE__*/ core.$con
 
         if (keyResult.issues.length) {
           if (def.mode === "loose") {
-            // Pass through unchanged
-            payload.value[key] = input[key];
+            // pass through unchanged, but never write __proto__: assignment on the plain {} result would replace its prototype
+            if (key !== "__proto__") payload.value[key] = input[key];
           } else if (values) {
             unrecognized = unrecognized ?? [];
             unrecognized.push(key as string);
@@ -3371,9 +3371,9 @@ export const $ZodRecord: core.$constructor<$ZodRecord> = /*@__PURE__*/ core.$con
           continue;
         }
 
-        // the guard above tests the raw input key, but the key schema can normalize an ordinary key into __proto__; re-check the key we actually write under
+        // never write __proto__: the key schema can normalize an ordinary key into it, and a raw __proto__ key is dropped once the key schema has reported on it
         const outKey = keyResult.value as PropertyKey;
-        if (outKey === "__proto__") continue;
+        if (outKey === "__proto__" || key === "__proto__") continue;
 
         const result = def.valueType._zod.run({ value: input[key], issues: [] }, ctx);
 

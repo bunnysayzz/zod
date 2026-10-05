@@ -835,6 +835,45 @@ test("a raw __proto__ input key stays skipped in loose mode", () => {
   expect(Object.prototype.hasOwnProperty.call(parsed, "__proto__")).toBe(false);
 });
 
+test("record reports invalid_key for a __proto__ key rejected by the key schema", () => {
+  const schema = z.record(
+    z.string().refine((k) => ["fr", "de"].includes(k)),
+    z.string()
+  );
+
+  const bad = schema.safeParse(JSON.parse('{"xx": "x", "fr": "y"}'));
+  expect(bad.success).toBe(false);
+  if (!bad.success) {
+    expect(bad.error.issues[0]!.code).toBe("invalid_key");
+    expect(bad.error.issues[0]!.path).toEqual(["xx"]);
+  }
+
+  const proto = schema.safeParse(JSON.parse('{"__proto__": "x", "fr": "y"}'));
+  expect(proto.success).toBe(false);
+  if (!proto.success) {
+    expect(proto.error.issues[0]!.code).toBe("invalid_key");
+    expect(proto.error.issues[0]!.path).toEqual(["__proto__"]);
+  }
+
+  // a passing key schema still drops __proto__ without touching the prototype
+  const plain = z.record(z.string(), z.string());
+  const parsed: any = plain.parse(JSON.parse('{"__proto__": "x", "fr": "y"}'));
+  expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
+  expect(Object.prototype.hasOwnProperty.call(parsed, "__proto__")).toBe(false);
+  expect(parsed.fr).toBe("y");
+
+  // loose mode never writes __proto__ even when the key schema rejects it
+  const loose: any = z
+    .looseRecord(
+      z.string().refine(() => false),
+      z.string()
+    )
+    .parse(JSON.parse('{"__proto__": "x", "a": "y"}'));
+  expect(Object.getPrototypeOf(loose)).toBe(Object.prototype);
+  expect(Object.prototype.hasOwnProperty.call(loose, "__proto__")).toBe(false);
+  expect(loose.a).toBe("y");
+});
+
 test("partialRecord strips a declared __proto__ key", () => {
   const schema = z.partialRecord(z.enum(["__proto__", "b"]), z.string());
   const parsed: any = schema.parse(Object.fromEntries([["__proto__", "declared"]]));
